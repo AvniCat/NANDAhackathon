@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NeedTranslator — Buyer-side marketplace skill</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+<header>
+  <h1>Need<em>Translator</em></h1>
+  <p class="tagline">
+    Tell us what you actually need. We'll turn it into something a marketplace can find.
+  </p>
+  <p class="sub">Buyer-side skill for the NANDA marketplace · <a href="https://github.com/AvniCat/NANDAhackathon" target="_blank">source</a> · <a href="/schema">schema</a></p>
+</header>
+
+<section class="demo">
+  <h2>Try it</h2>
+  <textarea id="intent" placeholder="e.g. I need something for my restaurant that keeps 100 oysters fresh for 3 days" rows="3"></textarea>
+  <div class="row">
+    <button id="translate" class="primary">Translate</button>
+    <div class="chips">
+      <span class="label">or try:</span>
+      <button class="chip" data-preset="I need something for my restaurant that keeps 100 oysters fresh for 3 days">Restaurant oyster storage</button>
+      <button class="chip" data-preset="Budget-friendly reliable laptop for a graphic design student, screen at least 15 inches">Student design laptop</button>
+      <button class="chip" data-preset="A cheap luxury item">Cheap luxury (contradiction)</button>
+      <button class="chip" data-preset="I need a car and my wife hates diesel">Hidden constraint (car)</button>
+      <button class="chip" data-preset="എനിക്ക് a good phone വേണം under ₹15000">Mixed-language phone</button>
+    </div>
+  </div>
+
+  <div id="result" class="result hidden"></div>
+  <div id="error" class="error hidden"></div>
+</section>
+
+<section class="explain">
+  <h2>How it works</h2>
+  <ol class="flow">
+    <li><b>Raw intent</b><br>Buyer describes what they want in messy natural language.</li>
+    <li><b>LLM extraction</b><br>Gemini extracts a strict-schema JSON card. Ollama fallback if Gemini is down.</li>
+    <li><b>Post-processing</b><br>Deterministic rules: taxonomy match, entity extraction, flag inference.</li>
+    <li><b>Structured Requirement Card</b><br>Must-haves, nice-to-haves, disqualifiers, search queries, confidence.</li>
+  </ol>
+</section>
+
+<section class="validator">
+  <h2>Adversarial validator</h2>
+  <p>
+    We ship a battery of 12 hostile test cases — ambiguous, contradictory, mixed-language, hidden-constraint, and more.
+    A downstream agent can run it to see whether NeedTranslator's current model handles the failure modes it cares about.
+  </p>
+  <button id="validate" class="primary">Run the 12-case adversarial test</button>
+  <div id="validator-result" class="validator-result hidden"></div>
+</section>
+
+<section class="about">
+  <h2>What this skill is for</h2>
+  <p>
+    Marketplace buyers describe things in natural language. Marketplaces index them by category, SKU, and structured attributes.
+    Existing intent parsers either strip too much context (keyword extractors) or hallucinate constraints that were never there
+    (LLM-only pipelines). NeedTranslator sits in the middle: LLM extraction wrapped in strict schema validation, deterministic
+    post-processing, and a real adversarial validator so an AI agent can trust the output.
+  </p>
+  <p>
+    <b>Composable.</b> A downstream <code>FairPrice</code> skill can consume a Requirement Card. A <code>TrustCheck</code>
+    skill can validate its constraints. NeedTranslator is designed to be the first hop in a chain of NANDA marketplace skills.
+  </p>
+</section>
+
+<footer>
+  NeedTranslator · Avni Singh · NANDA hackathon 2026 · MIT license
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
