@@ -97,6 +97,63 @@ function copyToClipboard(text) {
   navigator.clipboard.writeText(text.replace(/&#39;/g,"'"));
 }
 
+// ---------- chatbox ----------
+const chatState = { messages: [] };
+
+function addMsg(role, text, opts = {}) {
+  const el = document.createElement('div');
+  el.className = `msg ${role}` + (opts.thinking ? ' thinking' : '');
+  el.textContent = text;
+  $('chat-log').appendChild(el);
+  $('chat-log').scrollTop = $('chat-log').scrollHeight;
+  return el;
+}
+
+async function sendChat() {
+  const text = $('chat-text').value.trim();
+  if (!text) return;
+  $('chat-text').value = '';
+  $('chat-send').disabled = true;
+
+  chatState.messages.push({ role: 'user', content: text });
+  addMsg('user', text);
+  const thinking = addMsg('bot', 'thinking…', { thinking: true });
+
+  try {
+    const r = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: chatState.messages }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    thinking.remove();
+    // Show conversational reply (with any code blocks stripped for display, but preserved for card)
+    const displayText = (j.reply || '').replace(/```(?:json)?[\s\S]*?```/g, '').trim();
+    addMsg('bot', displayText || '(assistant returned no text)');
+    chatState.messages.push({ role: 'assistant', content: j.reply });
+
+    // If a Requirement Card was extracted, render it below the demo section too
+    if (j.card) {
+      const summary = document.createElement('div');
+      summary.className = 'msg bot';
+      summary.innerHTML = `<b>Requirement card generated.</b> Scroll up to see it rendered in the demo section.`;
+      $('chat-log').appendChild(summary);
+      renderCard(j.card);
+      document.getElementById('result').scrollIntoView({ behavior: 'smooth' });
+    }
+  } catch (e) {
+    thinking.remove();
+    addMsg('bot', `Something went wrong: ${e.message}`);
+  } finally {
+    $('chat-send').disabled = false;
+    $('chat-text').focus();
+  }
+}
+
+$('chat-send').addEventListener('click', sendChat);
+$('chat-text').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
+
 // ---------- validator ----------
 async function runValidator() {
   const btn = $('validate');
