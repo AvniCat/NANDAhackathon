@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app.translator import translate, MODEL_VERSION, CARD_SCHEMA
+from app.translator import translate, suggest_matches, MODEL_VERSION, CARD_SCHEMA
 from app.validator import run_validation, list_cases
 from app.llm import provider_status, chat as llm_chat, LLMError
 
@@ -92,6 +92,40 @@ def translate_endpoint(req: TranslateRequest) -> dict:
 @app.post("/validate")
 def validate_endpoint() -> dict:
     return run_validation()
+
+
+class SuggestRequest(BaseModel):
+    intent: Optional[str] = Field(default=None, description="Raw buyer intent — will be translated first")
+    card: Optional[dict] = Field(default=None, description="Pre-computed Structured Requirement Card")
+
+
+@app.post("/suggest")
+def suggest_endpoint(req: SuggestRequest) -> dict:
+    """Return 4 illustrative product matches for a Requirement Card.
+
+    Accepts either a raw intent (will be translated first) or a pre-computed card.
+    Marked illustrative — a downstream MatchFinder skill would query real marketplaces.
+    """
+    if not req.intent and not req.card:
+        raise HTTPException(status_code=400, detail="Provide either 'intent' or 'card'")
+
+    card = req.card or translate(req.intent or "")
+    if card.get("confidence", 0.0) < 0.3 or "ambiguous_intent" in (card.get("flags") or []):
+        return {
+            "matches": [],
+            "card": card,
+            "note": "Intent too ambiguous to suggest matches — clarify first.",
+        }
+
+    matches = suggest_matches(card)
+    return {
+        "matches": matches,
+        "card": card,
+        "note": (
+            "Illustrative matches only. A production NANDA agent would compose this skill "
+            "with a downstream MatchFinder that queries real marketplace inventories."
+        ),
+    }
 
 
 @app.post("/chat")

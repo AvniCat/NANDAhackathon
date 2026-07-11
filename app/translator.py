@@ -134,6 +134,54 @@ def translate(intent: str) -> dict:
     return card
 
 
+SUGGEST_SYSTEM = """You are the NeedTranslator match-suggestion helper. Given a Structured
+Requirement Card, propose 4 REALISTIC, DIFFERENTIATED product matches an Indian
+buyer could plausibly purchase today. Each match must:
+
+- Be a real, currently-sold product category or specific model name (not fictional)
+- Match all must_haves and none of the disqualifiers
+- Vary from the others — different budget bands, form factors, or seller types
+- Include a price range in Indian Rupees (INR)
+- Include a one-line "why_match" grounded in the specific must_haves it satisfies
+
+Return ONLY valid JSON matching this schema:
+{
+  "matches": [
+    {
+      "product_name": string,
+      "category": string,
+      "price_range_inr": {"min": number, "max": number},
+      "why_match": string,
+      "typical_seller_types": [string],
+      "match_score": number   // 0.0 to 1.0
+    }
+  ]
+}
+
+Rules:
+- Exactly 4 matches unless the card is too ambiguous to suggest anything, in which case return an empty matches array.
+- No prose, no explanation, no code fences.
+- Never invent brand names that don't exist. If unsure, use a generic category description.
+- Price ranges must be in INR (Indian Rupees). Convert if the card implies otherwise.
+"""
+
+
+def suggest_matches(card: dict) -> list[dict]:
+    """Given a Structured Requirement Card, return 4 illustrative product matches."""
+    import json
+    prompt = f"REQUIREMENT CARD:\n{json.dumps(card, indent=2)}\n\nReturn the matches JSON."
+    try:
+        raw = chat(prompt, system=SUGGEST_SYSTEM, json_mode=True)
+    except LLMError:
+        return []
+    raw = _strip_code_fences(raw)
+    try:
+        parsed = json.loads(raw)
+        return parsed.get("matches", []) or []
+    except json.JSONDecodeError:
+        return []
+
+
 CARD_SCHEMA = {
     "type": "object",
     "properties": {

@@ -25,6 +25,7 @@ async function translate() {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const card = await r.json();
     renderCard(card);
+    fetchMatches(card);
   } catch (e) {
     $('error').textContent = `Something went wrong: ${e.message}`;
     $('error').classList.remove('hidden');
@@ -95,6 +96,53 @@ function escape(s) {
 
 function copyToClipboard(text) {
   navigator.clipboard.writeText(text.replace(/&#39;/g,"'"));
+}
+
+// ---------- suggested matches ----------
+async function fetchMatches(card) {
+  const el = $('matches');
+  if (!el) return;
+  el.innerHTML = `<div class="card-title">Suggested matches</div><div class="matches-loading">Finding illustrative matches…</div>`;
+  el.classList.remove('hidden');
+  try {
+    const r = await fetch('/suggest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ card }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    renderMatches(j);
+  } catch (e) {
+    el.innerHTML = `<div class="card-title">Suggested matches</div><div class="matches-loading">Could not load matches: ${escape(e.message)}</div>`;
+  }
+}
+
+function renderMatches(data) {
+  const el = $('matches');
+  if (!data.matches || data.matches.length === 0) {
+    el.innerHTML = `
+      <div class="card-title">Suggested matches</div>
+      <div class="matches-loading">${escape(data.note || 'No matches to suggest.')}</div>
+    `;
+    return;
+  }
+  const rows = data.matches.map((m) => `
+    <div class="match-row">
+      <div class="match-head">
+        <div class="match-name">${escape(m.product_name || '(unnamed)')}</div>
+        <div class="match-score">${Math.round((m.match_score || 0) * 100)}%</div>
+      </div>
+      <div class="match-meta">${escape(m.category || '')} · ₹${(m.price_range_inr?.min ?? '?').toLocaleString?.() ?? '?'}–₹${(m.price_range_inr?.max ?? '?').toLocaleString?.() ?? '?'}</div>
+      <div class="match-why">${escape(m.why_match || '')}</div>
+      ${(m.typical_seller_types || []).length ? `<div class="match-sellers">${m.typical_seller_types.map((s) => `<span class="tag">${escape(s)}</span>`).join('')}</div>` : ''}
+    </div>
+  `).join('');
+  el.innerHTML = `
+    <div class="card-title">Suggested matches</div>
+    <div class="matches-note">${escape(data.note || '')}</div>
+    <div class="matches-grid">${rows}</div>
+  `;
 }
 
 // ---------- chatbox ----------
