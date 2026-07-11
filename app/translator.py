@@ -135,39 +135,76 @@ def translate(intent: str) -> dict:
 
 
 SUGGEST_SYSTEM = """You are the NeedTranslator match-suggestion helper. Given a Structured
-Requirement Card, propose 4 REALISTIC, DIFFERENTIATED product matches an Indian
-buyer could plausibly purchase today. Each match must:
+Requirement Card, propose 4 differentiated GENERIC product categories that a buyer
+could search for on a real marketplace. Each match will be turned into a search-link on
+Amazon India, Flipkart, and Google Shopping — the buyer then sees actual current
+listings themselves.
 
-- Be a real, currently-sold product category or specific model name (not fictional)
-- Match all must_haves and none of the disqualifiers
-- Vary from the others — different budget bands, form factors, or seller types
-- Include a price range in Indian Rupees (INR)
-- Include a one-line "why_match" grounded in the specific must_haves it satisfies
+CRITICAL ANTI-HALLUCINATION RULES:
+- Every `product_name` MUST be a generic, searchable product category description that
+  Amazon India / Flipkart already have inventory for. Examples:
+    OK  : "Commercial Refrigerated Seafood Display Counter"
+    OK  : "Over-Ear Noise-Cancelling Headphones"
+    OK  : "Walk-In Chicken Coop with Galvanized Wire"
+    BAD : "Blue Star XR-500 Model 2024"   (invents a specific SKU)
+    BAD : "Premium Cedar Heavy-Duty Walk-In Chicken Coop"  (invents a specific product)
+- Do NOT invent specific brand names, model numbers, or SKU codes. Only use brand names
+  that are DEFINITELY real and dominant in India (Amazon Basics, Boat, Sony, Blue Star,
+  Samsung, Whirlpool, etc.) — and only if the buyer clearly needs a brand.
+- Each `product_name` must survive a marketplace search: if a buyer pastes it into
+  amazon.in and gets zero relevant results, you failed.
+
+Each match must also:
+- Match all must_haves and violate none of the disqualifiers
+- Differ from the others — different form factors, price bands, or use cases
+- Include a realistic price range in Indian Rupees (INR)
+- Include a one-line "why_match" grounded in specific must_haves it satisfies
 
 Return ONLY valid JSON matching this schema:
 {
   "matches": [
     {
-      "product_name": string,
-      "category": string,
+      "product_name": string,          // generic searchable category — NOT a specific SKU
+      "category": string,               // broader category, uppercase-suitable
       "price_range_inr": {"min": number, "max": number},
       "why_match": string,
       "typical_seller_types": [string],
-      "match_score": number   // 0.0 to 1.0
+      "match_score": number             // 0.0 to 1.0
     }
   ]
 }
 
 Rules:
-- Exactly 4 matches unless the card is too ambiguous to suggest anything, in which case return an empty matches array.
+- Exactly 4 matches unless the card is too ambiguous, in which case return an empty matches array.
 - No prose, no explanation, no code fences.
-- Never invent brand names that don't exist. If unsure, use a generic category description.
-- Price ranges must be in INR (Indian Rupees). Convert if the card implies otherwise.
+- Price ranges must be in INR. Convert if the card implies another currency.
 """
 
 
+def _add_marketplace_search_urls(matches: list[dict]) -> list[dict]:
+    """For each match, add safe marketplace-search URLs (not specific product URLs).
+
+    Search URLs are hallucination-proof — they always return real current inventory,
+    and the buyer picks from what's actually available on each marketplace.
+    """
+    import urllib.parse
+    for m in matches:
+        name = str(m.get("product_name") or "").strip()
+        if not name:
+            m["marketplace_search_urls"] = []
+            continue
+        q = urllib.parse.quote_plus(name)
+        m["marketplace_search_urls"] = [
+            {"marketplace": "Amazon India",   "url": f"https://www.amazon.in/s?k={q}"},
+            {"marketplace": "Flipkart",       "url": f"https://www.flipkart.com/search?q={q}"},
+            {"marketplace": "Google Shopping", "url": f"https://www.google.com/search?tbm=shop&q={q}"},
+        ]
+    return matches
+
+
 def suggest_matches(card: dict) -> list[dict]:
-    """Given a Structured Requirement Card, return 4 illustrative product matches."""
+    """Given a Structured Requirement Card, return 4 illustrative product matches with
+    hallucination-proof marketplace-search deep-links."""
     import json
     prompt = f"REQUIREMENT CARD:\n{json.dumps(card, indent=2)}\n\nReturn the matches JSON."
     try:
@@ -177,9 +214,10 @@ def suggest_matches(card: dict) -> list[dict]:
     raw = _strip_code_fences(raw)
     try:
         parsed = json.loads(raw)
-        return parsed.get("matches", []) or []
+        matches = parsed.get("matches", []) or []
     except json.JSONDecodeError:
         return []
+    return _add_marketplace_search_urls(matches)
 
 
 CARD_SCHEMA = {
